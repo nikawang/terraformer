@@ -17,6 +17,7 @@ package azure
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-03-01/network"
 )
@@ -35,27 +36,55 @@ func (az *RouteTableGenerator) listResources() ([]network.RouteTable, error) {
 	)
 	ctx := context.Background()
 	if resourceGroup != "" {
-		iterator, err = client.ListComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+		var resources []network.RouteTable
+		for _, rgName := range resourceGroups {
+
+			iterator, err = client.ListComplete(ctx, rgName)
+			if err != nil {
+				return nil, err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				resources = append(resources, item)
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		return resources, nil
+		// iterator, err = client.ListComplete(ctx, resourceGroup)
 	} else {
 		iterator, err = client.ListAllComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var resources []network.RouteTable
-	for iterator.NotDone() {
-		item := iterator.Value()
-		resources = append(resources, item)
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
+		if err != nil {
+			return nil, err
 		}
+		var resources []network.RouteTable
+		for iterator.NotDone() {
+			item := iterator.Value()
+			resources = append(resources, item)
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return resources, err
+			}
+		}
+		return resources, nil
 	}
-	return resources, nil
+
+	return nil, nil
+
 }
 
 func (az *RouteTableGenerator) appendResource(resource *network.RouteTable) {
-	az.AppendSimpleResourceWithDuplicateCheck(*resource.ID, *resource.Name, "azurerm_route_table")
+
+	parts := strings.Split(*resource.ID, "/")
+	resourceGroup := parts[4]
+	// log.Println("resourceGroup:\t", resourceGroup)
+	// log.Println("resourceID:\t", *resource.ID)
+	// log.Println("resourceName:\t", *resource.Name)
+	// vnetName := parts[8]
+	az.AppendSimpleResource(*resource.ID, resourceGroup+"_"+*resource.Name, "azurerm_route_table")
 }
 
 func (az *RouteTableGenerator) appendRoutes(parent *network.RouteTable, resourceGroupID *ResourceID) error {
@@ -69,7 +98,8 @@ func (az *RouteTableGenerator) appendRoutes(parent *network.RouteTable, resource
 	}
 	for iterator.NotDone() {
 		item := iterator.Value()
-		az.AppendSimpleResourceWithDuplicateCheck(*item.ID, *item.Name, "azurerm_route")
+		// log.Println("routeID:\t", *item.ID)
+		az.AppendSimpleResource(*item.ID, resourceGroupID.ResourceGroup+"_"+*item.Name, "azurerm_route")
 		if err := iterator.NextWithContext(ctx); err != nil {
 			log.Println(err)
 			return err
@@ -108,7 +138,9 @@ func (az *RouteTableGenerator) listRouteFilters() ([]network.RouteFilter, error)
 }
 
 func (az *RouteTableGenerator) appendRouteFilters(resource *network.RouteFilter) {
-	az.AppendSimpleResource(*resource.ID, *resource.Name, "azurerm_route_filter")
+	parts := strings.Split(*resource.ID, "/")
+	resourceGroup := parts[4]
+	az.AppendSimpleResource(*resource.ID, resourceGroup+"_"+*resource.Name, "azurerm_route_filter")
 }
 
 func (az *RouteTableGenerator) InitResources() error {

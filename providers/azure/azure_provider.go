@@ -349,6 +349,7 @@ func (AzureProvider) GetResourceConnections() map[string]map[string][]string {
 
 func (p *AzureProvider) GetSupportedService() map[string]terraformutils.ServiceGenerator {
 	return map[string]terraformutils.ServiceGenerator{
+		"aks":                                  &AKSGenerator{},
 		"analysis":                             &AnalysisGenerator{},
 		"app_service":                          &AppServiceGenerator{},
 		"application_gateway":                  &ApplicationGatewayGenerator{},

@@ -17,6 +17,7 @@ package azure
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-03-01/network"
 )
@@ -34,28 +35,50 @@ func (az *NetworkSecurityGroupGenerator) listResources() ([]network.SecurityGrou
 		err      error
 	)
 	ctx := context.Background()
+	var resources []network.SecurityGroup
 	if resourceGroup != "" {
-		iterator, err = client.ListComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+
+		for _, rgName := range resourceGroups {
+			iterator, err = client.ListComplete(ctx, rgName)
+			if err != nil {
+				return nil, err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				resources = append(resources, item)
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		return resources, nil
+		// iterator, err = client.ListComplete(ctx, resourceGroup)
+
 	} else {
 		iterator, err = client.ListAllComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var resources []network.SecurityGroup
-	for iterator.NotDone() {
-		item := iterator.Value()
-		resources = append(resources, item)
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
+		if err != nil {
+			return nil, err
 		}
+
+		for iterator.NotDone() {
+			item := iterator.Value()
+			resources = append(resources, item)
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return resources, err
+			}
+		}
+		return resources, nil
 	}
-	return resources, nil
+
 }
 
 func (az *NetworkSecurityGroupGenerator) appendResource(resource *network.SecurityGroup) {
-	az.AppendSimpleResourceWithDuplicateCheck(*resource.ID, *resource.Name, "azurerm_network_security_group")
+	parts := strings.Split(*resource.ID, "/")
+	resourceGroup := parts[4]
+	az.AppendSimpleResource(*resource.ID, resourceGroup+"_"+*resource.Name, "azurerm_network_security_group")
 }
 
 func (az *NetworkSecurityGroupGenerator) appendRules(parent *network.SecurityGroup, resourceGroupID *ResourceID) error {
@@ -69,7 +92,10 @@ func (az *NetworkSecurityGroupGenerator) appendRules(parent *network.SecurityGro
 	}
 	for iterator.NotDone() {
 		item := iterator.Value()
-		az.AppendSimpleResourceWithDuplicateCheck(*item.ID, *item.Name, "azurerm_network_security_rule")
+		parts := strings.Split(*item.ID, "/")
+		resourceGroup := parts[4]
+		nsg := parts[8]
+		az.AppendSimpleResource(*item.ID, resourceGroup+"_"+nsg+"_"+*item.Name, "azurerm_network_security_rule")
 		if err := iterator.NextWithContext(ctx); err != nil {
 			log.Println(err)
 			return err

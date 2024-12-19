@@ -17,6 +17,7 @@ package azure
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 )
@@ -34,28 +35,52 @@ func (az *PrivateEndpointGenerator) listServices() ([]network.PrivateLinkService
 		err      error
 	)
 	ctx := context.Background()
+	var resources []network.PrivateLinkService
 	if resourceGroup != "" {
-		iterator, err = client.ListComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+		// var resources []network.PrivateLinkService
+		for _, rgName := range resourceGroups {
+			iterator, err = client.ListComplete(ctx, rgName)
+
+			if err != nil {
+				return nil, err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				resources = append(resources, item)
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		return resources, nil
+
+		// iterator, err = client.ListComplete(ctx, resourceGroup)
 	} else {
 		iterator, err = client.ListBySubscriptionComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var resources []network.PrivateLinkService
-	for iterator.NotDone() {
-		item := iterator.Value()
-		resources = append(resources, item)
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
+		if err != nil {
+			return nil, err
 		}
+
+		for iterator.NotDone() {
+			item := iterator.Value()
+			resources = append(resources, item)
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return resources, err
+			}
+		}
+		return resources, nil
 	}
-	return resources, nil
+
+	// return resources, nil
 }
 
 func (az *PrivateEndpointGenerator) AppendServices(link *network.PrivateLinkService) {
-	az.AppendSimpleResource(*link.ID, *link.Name, "azurerm_private_link_service")
+	parts := strings.Split(*link.ID, "/")
+	resourceGroup := parts[4]
+	az.AppendSimpleResource(*link.ID, resourceGroup+"_"+*link.Name, "azurerm_private_link_service")
 }
 
 func (az *PrivateEndpointGenerator) listEndpoints() ([]network.PrivateEndpoint, error) {
@@ -67,28 +92,50 @@ func (az *PrivateEndpointGenerator) listEndpoints() ([]network.PrivateEndpoint, 
 		err      error
 	)
 	ctx := context.Background()
+	var resources []network.PrivateEndpoint
 	if resourceGroup != "" {
-		iterator, err = client.ListComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+		for _, rgName := range resourceGroups {
+			iterator, err = client.ListComplete(ctx, rgName)
+			if err != nil {
+				return nil, err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				resources = append(resources, item)
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		return resources, nil
+
+		// iterator, err = client.ListComplete(ctx, resourceGroup)
 	} else {
 		iterator, err = client.ListBySubscriptionComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var resources []network.PrivateEndpoint
-	for iterator.NotDone() {
-		item := iterator.Value()
-		resources = append(resources, item)
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
+		if err != nil {
+			return nil, err
 		}
+
+		for iterator.NotDone() {
+			item := iterator.Value()
+			resources = append(resources, item)
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return resources, err
+			}
+		}
+		return resources, nil
 	}
-	return resources, nil
+
 }
 
 func (az *PrivateEndpointGenerator) AppendEndpoint(link *network.PrivateEndpoint) {
-	az.AppendSimpleResource(*link.ID, *link.Name, "azurerm_private_endpoint")
+	parts := strings.Split(*link.ID, "/")
+	resourceGroup := parts[4]
+
+	az.AppendSimpleResource(*link.ID, resourceGroup+"_"+*link.Name, "azurerm_private_endpoint")
 }
 
 func (az *PrivateEndpointGenerator) InitResources() error {

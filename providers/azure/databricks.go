@@ -17,6 +17,7 @@ package azure
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/databricks/mgmt/2018-04-01/databricks"
 )
@@ -34,28 +35,48 @@ func (az *DatabricksGenerator) listWorkspaces() ([]databricks.Workspace, error) 
 		err      error
 	)
 	ctx := context.Background()
+	var resources []databricks.Workspace
 	if resourceGroup != "" {
-		iterator, err = client.ListByResourceGroupComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+		for _, rgName := range resourceGroups {
+			iterator, err = client.ListByResourceGroupComplete(ctx, rgName)
+			if err != nil {
+				return nil, err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				resources = append(resources, item)
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		return resources, nil
+		// iterator, err = client.ListByResourceGroupComplete(ctx, resourceGroup)
 	} else {
 		iterator, err = client.ListBySubscriptionComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var resources []databricks.Workspace
-	for iterator.NotDone() {
-		item := iterator.Value()
-		resources = append(resources, item)
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
+		if err != nil {
+			return nil, err
 		}
+
+		for iterator.NotDone() {
+			item := iterator.Value()
+			resources = append(resources, item)
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return resources, err
+			}
+		}
+		return resources, nil
 	}
-	return resources, nil
+
 }
 
 func (az *DatabricksGenerator) AppendWorkspace(workspace *databricks.Workspace) {
-	az.AppendSimpleResource(*workspace.ID, *workspace.Name, "azurerm_databricks_workspace")
+	parts := strings.Split(*workspace.ID, "/")
+	resourceGroup := parts[4]
+	az.AppendSimpleResource(*workspace.ID, resourceGroup+"_"+*workspace.Name, "azurerm_databricks_workspace")
 }
 
 func (az *DatabricksGenerator) InitResources() error {

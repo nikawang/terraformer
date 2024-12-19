@@ -18,6 +18,8 @@ import (
 	"context"
 	"log"
 
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 )
 
@@ -25,62 +27,148 @@ type SubnetGenerator struct {
 	AzureService
 }
 
+// func (az *SubnetGenerator) lisSubnets() ([]network.Subnet, error) {
+// 	subscriptionID, resourceGroup, authorizer, resourceManagerEndpoint := az.getClientArgs()
+// 	subnetClient := network.NewSubnetsClientWithBaseURI(resourceManagerEndpoint, subscriptionID)
+// 	subnetClient.Authorizer = authorizer
+// 	vnetClient := network.NewVirtualNetworksClientWithBaseURI(resourceManagerEndpoint, subscriptionID)
+// 	vnetClient.Authorizer = authorizer
+// 	var (
+// 		vnetIter   network.VirtualNetworkListResultIterator
+// 		subnetIter network.SubnetListResultIterator
+// 		err        error
+// 	)
+// 	ctx := context.Background()
+// 	if resourceGroup != "" {
+// 		vnetIter, err = vnetClient.ListComplete(ctx, resourceGroup)
+// 	} else {
+// 		vnetIter, err = vnetClient.ListAllComplete(ctx)
+// 	}
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	var resources []network.Subnet
+// 	for vnetIter.NotDone() {
+// 		vnet := vnetIter.Value()
+// 		vnetID, err := ParseAzureResourceID(*vnet.ID)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		subnetIter, err = subnetClient.ListComplete(ctx, vnetID.ResourceGroup, *vnet.Name)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		for subnetIter.NotDone() {
+// 			item := subnetIter.Value()
+// 			resources = append(resources, item)
+// 			if err := subnetIter.NextWithContext(ctx); err != nil {
+// 				log.Println(err)
+// 				return resources, err
+// 			}
+// 		}
+// 		if err := vnetIter.NextWithContext(ctx); err != nil {
+// 			log.Println(err)
+// 			return resources, err
+// 		}
+// 	}
+// 	return resources, nil
+// }
+
 func (az *SubnetGenerator) lisSubnets() ([]network.Subnet, error) {
 	subscriptionID, resourceGroup, authorizer, resourceManagerEndpoint := az.getClientArgs()
 	subnetClient := network.NewSubnetsClientWithBaseURI(resourceManagerEndpoint, subscriptionID)
 	subnetClient.Authorizer = authorizer
 	vnetClient := network.NewVirtualNetworksClientWithBaseURI(resourceManagerEndpoint, subscriptionID)
 	vnetClient.Authorizer = authorizer
-	var (
-		vnetIter   network.VirtualNetworkListResultIterator
-		subnetIter network.SubnetListResultIterator
-		err        error
-	)
+	// var (
+	// 	err error
+	// )
 	ctx := context.Background()
-	if resourceGroup != "" {
-		vnetIter, err = vnetClient.ListComplete(ctx, resourceGroup)
-	} else {
-		vnetIter, err = vnetClient.ListAllComplete(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
 	var resources []network.Subnet
-	for vnetIter.NotDone() {
-		vnet := vnetIter.Value()
-		vnetID, err := ParseAzureResourceID(*vnet.ID)
+
+	if resourceGroup != "" {
+		// 将 resourceGroup 按逗号分割
+		resourceGroups := strings.Split(resourceGroup, ",")
+		for _, rgName := range resourceGroups {
+			rgName = strings.TrimSpace(rgName)
+			// 列出该资源组中的虚拟网络
+			vnetIter, err := vnetClient.ListComplete(ctx, rgName)
+			if err != nil {
+				return nil, err
+			}
+			for vnetIter.NotDone() {
+				vnet := vnetIter.Value()
+				vnetID, err := ParseAzureResourceID(*vnet.ID)
+				if err != nil {
+					return nil, err
+				}
+				subnetIter, err := subnetClient.ListComplete(ctx, vnetID.ResourceGroup, *vnet.Name)
+				if err != nil {
+					return nil, err
+				}
+				for subnetIter.NotDone() {
+					item := subnetIter.Value()
+					resources = append(resources, item)
+					if err := subnetIter.NextWithContext(ctx); err != nil {
+						log.Println(err)
+						return resources, err
+					}
+				}
+				if err := vnetIter.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+	} else {
+		// 如果 resourceGroup 为空，列出所有订阅中的虚拟网络
+		vnetIter, err := vnetClient.ListAllComplete(ctx)
 		if err != nil {
 			return nil, err
 		}
-		subnetIter, err = subnetClient.ListComplete(ctx, vnetID.ResourceGroup, *vnet.Name)
-		if err != nil {
-			return nil, err
-		}
-		for subnetIter.NotDone() {
-			item := subnetIter.Value()
-			resources = append(resources, item)
-			if err := subnetIter.NextWithContext(ctx); err != nil {
+		for vnetIter.NotDone() {
+			vnet := vnetIter.Value()
+			vnetID, err := ParseAzureResourceID(*vnet.ID)
+			if err != nil {
+				return nil, err
+			}
+			subnetIter, err := subnetClient.ListComplete(ctx, vnetID.ResourceGroup, *vnet.Name)
+			if err != nil {
+				return nil, err
+			}
+			for subnetIter.NotDone() {
+				item := subnetIter.Value()
+				resources = append(resources, item)
+				if err := subnetIter.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+			if err := vnetIter.NextWithContext(ctx); err != nil {
 				log.Println(err)
 				return resources, err
 			}
-		}
-		if err := vnetIter.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return resources, err
 		}
 	}
 	return resources, nil
 }
 
 func (az *SubnetGenerator) AppendSubnet(subnet *network.Subnet) {
-	az.AppendSimpleResource(*subnet.ID, *subnet.Name, "azurerm_subnet")
+	// get vnet name from azure subnet id
+	parts := strings.Split(*subnet.ID, "/")
+	resourceGroup := parts[4]
+	vnetName := parts[8]
+	az.AppendSimpleResource(*subnet.ID, resourceGroup+"_"+vnetName+"_"+*subnet.Name, "azurerm_subnet")
 }
 
 func (az *SubnetGenerator) appendRouteTable(subnet *network.Subnet) {
+	parts := strings.Split(*subnet.ID, "/")
+	resourceGroup := parts[4]
+	vnetName := parts[8]
 	if props := subnet.SubnetPropertiesFormat; props != nil {
 		if prop := props.RouteTable; prop != nil {
 			az.appendSimpleAssociation(
-				*subnet.ID, *subnet.Name, prop.Name,
+				*subnet.ID, resourceGroup+"_"+vnetName+"_"+*subnet.Name, prop.Name,
 				"azurerm_subnet_route_table_association",
 				map[string]string{
 					"subnet_id":      *subnet.ID,
@@ -91,10 +179,13 @@ func (az *SubnetGenerator) appendRouteTable(subnet *network.Subnet) {
 }
 
 func (az *SubnetGenerator) appendNetworkSecurityGroupAssociation(subnet *network.Subnet) {
+	parts := strings.Split(*subnet.ID, "/")
+	resourceGroup := parts[4]
+	vnetName := parts[8]
 	if props := subnet.SubnetPropertiesFormat; props != nil {
 		if prop := props.NetworkSecurityGroup; prop != nil {
 			az.appendSimpleAssociation(
-				*subnet.ID, *subnet.Name, prop.Name,
+				*subnet.ID, resourceGroup+"_"+vnetName+"_"+*subnet.Name, prop.Name,
 				"azurerm_subnet_network_security_group_association",
 				map[string]string{
 					"subnet_id":                 *subnet.ID,
@@ -105,10 +196,13 @@ func (az *SubnetGenerator) appendNetworkSecurityGroupAssociation(subnet *network
 }
 
 func (az *SubnetGenerator) appendNatGateway(subnet *network.Subnet) {
+	parts := strings.Split(*subnet.ID, "/")
+	resourceGroup := parts[4]
+	vnetName := parts[8]
 	if props := subnet.SubnetPropertiesFormat; props != nil {
 		if prop := props.NatGateway; prop != nil {
 			az.appendSimpleAssociation(
-				*subnet.ID, *subnet.Name, nil,
+				*subnet.ID, resourceGroup+"_"+vnetName+"_"+*subnet.Name, nil,
 				"azurerm_subnet_nat_gateway_association",
 				map[string]string{
 					"subnet_id":      *subnet.ID,
