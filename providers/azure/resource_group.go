@@ -17,6 +17,7 @@ package azure
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-05-01/resources"
 	"github.com/Azure/go-autorest/autorest"
@@ -55,24 +56,28 @@ func (g *ResourceGroupGenerator) InitResources() error {
 	groupsClient.Authorizer = g.Args["authorizer"].(autorest.Authorizer)
 
 	if rg := g.Args["resource_group"].(string); rg != "" {
-		group, err := groupsClient.Get(ctx, rg)
+		resourceGroupNames := strings.Split(rg, ",")
+		for _, resourceGroupName := range resourceGroupNames {
+			group, err := groupsClient.Get(ctx, resourceGroupName)
+			if err != nil {
+				return err
+			}
+			g.Resources = []terraformutils.Resource{
+				terraformutils.NewSimpleResource(
+					*group.ID,
+					*group.Name,
+					"azurerm_resource_group",
+					"azurerm",
+					[]string{}),
+			}
+		}
+		return nil
+	} else {
+		output, err := groupsClient.ListComplete(ctx, "", nil)
 		if err != nil {
 			return err
 		}
-		g.Resources = []terraformutils.Resource{
-			terraformutils.NewSimpleResource(
-				*group.ID,
-				*group.Name,
-				"azurerm_resource_group",
-				"azurerm",
-				[]string{}),
-		}
+		g.Resources = g.createResources(output)
 		return nil
 	}
-	output, err := groupsClient.ListComplete(ctx, "", nil)
-	if err != nil {
-		return err
-	}
-	g.Resources = g.createResources(output)
-	return nil
 }

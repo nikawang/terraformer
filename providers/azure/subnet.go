@@ -91,9 +91,11 @@ func (az *SubnetGenerator) lisSubnets() ([]network.Subnet, error) {
 		resourceGroups := strings.Split(resourceGroup, ",")
 		for _, rgName := range resourceGroups {
 			rgName = strings.TrimSpace(rgName)
+			log.Default().Println("Subnet Resource Group: ", rgName)
 			// 列出该资源组中的虚拟网络
 			vnetIter, err := vnetClient.ListComplete(ctx, rgName)
 			if err != nil {
+				log.Default().Println("subnet error: ", err)
 				return nil, err
 			}
 			for vnetIter.NotDone() {
@@ -222,22 +224,38 @@ func (az *SubnetGenerator) appendServiceEndpointPolicies() error {
 	)
 	ctx := context.Background()
 	if resourceGroup != "" {
-		iterator, err = client.ListByResourceGroupComplete(ctx, resourceGroup)
+		resourceGroups := strings.Split(resourceGroup, ",")
+		for _, rgName := range resourceGroups {
+			iterator, err = client.ListByResourceGroupComplete(ctx, rgName)
+			if err != nil {
+				return err
+			}
+			for iterator.NotDone() {
+				item := iterator.Value()
+				az.AppendSimpleResource(*item.ID, rgName+"_"+*item.Name, "azurerm_subnet_service_endpoint_policy")
+				if err := iterator.NextWithContext(ctx); err != nil {
+					log.Println(err)
+					return err
+				}
+			}
+		}
+		// iterator, err = client.ListByResourceGroupComplete(ctx, resourceGroup)
 	} else {
 		iterator, err = client.ListComplete(ctx)
+		for iterator.NotDone() {
+			item := iterator.Value()
+			az.AppendSimpleResource(*item.ID, *item.Name, "azurerm_subnet_service_endpoint_storage_policy")
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return err
+			}
+		}
+		return err
 	}
 	if err != nil {
 		return err
 	}
 
-	for iterator.NotDone() {
-		item := iterator.Value()
-		az.AppendSimpleResource(*item.ID, *item.Name, "azurerm_subnet_service_endpoint_storage_policy")
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
-			return err
-		}
-	}
 	return nil
 }
 

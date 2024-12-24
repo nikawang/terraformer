@@ -129,46 +129,92 @@ func (g *PrivateDNSGenerator) listAndAddForPrivateDNSZone() ([]terraformutils.Re
 		err             error
 	)
 	if rg := g.Args["resource_group"].(string); rg != "" {
-		dnsZoneIterator, err = PrivateDNSZonesClient.ListByResourceGroupComplete(ctx, rg, &pageSize)
+		resourceGroups := strings.Split(rg, ",")
+		for _, rgName := range resourceGroups {
+			rgName = strings.TrimSpace(rgName)
+			log.Default().Println("Private DNS Zone Resource Group: ", rgName)
+			dnsZoneIterator, err = PrivateDNSZonesClient.ListByResourceGroupComplete(ctx, rgName, &pageSize)
+			if err != nil {
+				return nil, err
+			}
+
+			for dnsZoneIterator.NotDone() {
+				zone := dnsZoneIterator.Value()
+				log.Print("zoneID: ", *zone.ID)
+				parts := strings.Split(*zone.ID, "/")
+				resourceGroup := parts[4]
+				// zoneID := parts[8]
+				resources = append(resources, terraformutils.NewSimpleResource(
+					*zone.ID,
+					resourceGroup+"_"+*zone.Name,
+					"azurerm_private_dns_zone",
+					g.ProviderName,
+					[]string{}))
+
+				id, err := ParseAzureResourceID(*zone.ID)
+				if err != nil {
+					return nil, err
+				}
+
+				records, err := g.listRecordSets(id.ResourceGroup, *zone.Name, &pageSize)
+				if err != nil {
+					return nil, err
+				}
+				resources = append(resources, records...)
+
+				networkLinks, err := g.listVirtualNetworkLinks(id.ResourceGroup, *zone.Name, &pageSize)
+				if err != nil {
+					return nil, err
+				}
+				resources = append(resources, networkLinks...)
+
+				if err := dnsZoneIterator.Next(); err != nil {
+					log.Println(err)
+					return resources, err
+				}
+			}
+		}
+		// dnsZoneIterator, err = PrivateDNSZonesClient.ListByResourceGroupComplete(ctx, rg, &pageSize)
 	} else {
 		dnsZoneIterator, err = PrivateDNSZonesClient.ListComplete(ctx, &pageSize)
-	}
-	if err != nil {
-		return nil, err
-	}
-	for dnsZoneIterator.NotDone() {
-		zone := dnsZoneIterator.Value()
-		log.Print("zoneID: ", *zone.ID)
-		parts := strings.Split(*zone.ID, "/")
-		resourceGroup := parts[4]
-		// zoneID := parts[8]
-		resources = append(resources, terraformutils.NewSimpleResource(
-			*zone.ID,
-			resourceGroup+"_"+*zone.Name,
-			"azurerm_private_dns_zone",
-			g.ProviderName,
-			[]string{}))
-
-		id, err := ParseAzureResourceID(*zone.ID)
 		if err != nil {
 			return nil, err
 		}
 
-		records, err := g.listRecordSets(id.ResourceGroup, *zone.Name, &pageSize)
-		if err != nil {
-			return nil, err
-		}
-		resources = append(resources, records...)
+		for dnsZoneIterator.NotDone() {
+			zone := dnsZoneIterator.Value()
+			log.Print("zoneID: ", *zone.ID)
+			parts := strings.Split(*zone.ID, "/")
+			resourceGroup := parts[4]
+			// zoneID := parts[8]
+			resources = append(resources, terraformutils.NewSimpleResource(
+				*zone.ID,
+				resourceGroup+"_"+*zone.Name,
+				"azurerm_private_dns_zone",
+				g.ProviderName,
+				[]string{}))
 
-		networkLinks, err := g.listVirtualNetworkLinks(id.ResourceGroup, *zone.Name, &pageSize)
-		if err != nil {
-			return nil, err
-		}
-		resources = append(resources, networkLinks...)
+			id, err := ParseAzureResourceID(*zone.ID)
+			if err != nil {
+				return nil, err
+			}
 
-		if err := dnsZoneIterator.Next(); err != nil {
-			log.Println(err)
-			return resources, err
+			records, err := g.listRecordSets(id.ResourceGroup, *zone.Name, &pageSize)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, records...)
+
+			networkLinks, err := g.listVirtualNetworkLinks(id.ResourceGroup, *zone.Name, &pageSize)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, networkLinks...)
+
+			if err := dnsZoneIterator.Next(); err != nil {
+				log.Println(err)
+				return resources, err
+			}
 		}
 	}
 

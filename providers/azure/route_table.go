@@ -92,17 +92,21 @@ func (az *RouteTableGenerator) appendRoutes(parent *network.RouteTable, resource
 	client := network.NewRoutesClientWithBaseURI(resourceManagerEndpoint, subscriptionID)
 	client.Authorizer = authorizer
 	ctx := context.Background()
-	iterator, err := client.ListComplete(ctx, resourceGroupID.ResourceGroup, *parent.Name)
-	if err != nil {
-		return err
-	}
-	for iterator.NotDone() {
-		item := iterator.Value()
-		// log.Println("routeID:\t", *item.ID)
-		az.AppendSimpleResource(*item.ID, resourceGroupID.ResourceGroup+"_"+*item.Name, "azurerm_route")
-		if err := iterator.NextWithContext(ctx); err != nil {
-			log.Println(err)
+
+	resourceGroups := strings.Split(resourceGroupID.ResourceGroup, ",")
+	for _, rgName := range resourceGroups {
+		iterator, err := client.ListComplete(ctx, rgName, *parent.Name)
+		if err != nil {
 			return err
+		}
+		for iterator.NotDone() {
+			item := iterator.Value()
+			// log.Println("routeID:\t", *item.ID)
+			az.AppendSimpleResource(*item.ID, rgName+"_"+*item.Name, "azurerm_route")
+			if err := iterator.NextWithContext(ctx); err != nil {
+				log.Println(err)
+				return err
+			}
 		}
 	}
 	return nil

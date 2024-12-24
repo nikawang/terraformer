@@ -92,8 +92,10 @@ func (g *VirtualNetworkGenerator) InitResources() error {
 		resourceGroups := strings.Split(rg, ",")
 		for _, rgName := range resourceGroups {
 			rgName = strings.TrimSpace(rgName)
+			log.Default().Println("VNET Resource Group: ", rgName)
 			output, err := virtualNetworkClient.ListComplete(ctx, rgName)
 			if err != nil {
+				log.Default().Println("vnet error: ", err)
 				return err
 			}
 			resources, err := g.createResources(ctx, output)
