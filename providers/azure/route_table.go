@@ -19,7 +19,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-03-01/network"
+	// "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2020-03-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 )
 
 type RouteTableGenerator struct {
@@ -39,13 +40,15 @@ func (az *RouteTableGenerator) listResources() ([]network.RouteTable, error) {
 		resourceGroups := strings.Split(resourceGroup, ",")
 		var resources []network.RouteTable
 		for _, rgName := range resourceGroups {
-
+			// log.Default().Println("Route table resource group", rgName)
 			iterator, err = client.ListComplete(ctx, rgName)
 			if err != nil {
+				log.Default().Println("Route table err", err)
 				return nil, err
 			}
 			for iterator.NotDone() {
 				item := iterator.Value()
+				log.Println("Route table ID in iterator", *item.ID)
 				resources = append(resources, item)
 				if err := iterator.NextWithContext(ctx); err != nil {
 					log.Println(err)
@@ -58,6 +61,7 @@ func (az *RouteTableGenerator) listResources() ([]network.RouteTable, error) {
 	} else {
 		iterator, err = client.ListAllComplete(ctx)
 		if err != nil {
+			log.Default().Println("Route table err", err)
 			return nil, err
 		}
 		var resources []network.RouteTable
@@ -72,13 +76,14 @@ func (az *RouteTableGenerator) listResources() ([]network.RouteTable, error) {
 		return resources, nil
 	}
 
-	return nil, nil
+	// return nil, nil
 
 }
 
 func (az *RouteTableGenerator) appendResource(resource *network.RouteTable) {
 
 	parts := strings.Split(*resource.ID, "/")
+	log.Default().Println("Route table ID", *resource.ID)
 	resourceGroup := parts[4]
 	// log.Println("resourceGroup:\t", resourceGroup)
 	// log.Println("resourceID:\t", *resource.ID)
@@ -102,7 +107,7 @@ func (az *RouteTableGenerator) appendRoutes(parent *network.RouteTable, resource
 		for iterator.NotDone() {
 			item := iterator.Value()
 			// log.Println("routeID:\t", *item.ID)
-			az.AppendSimpleResource(*item.ID, rgName+"_"+*item.Name, "azurerm_route")
+			az.AppendSimpleResource(*item.ID, rgName+"_"+*parent.Name+"_"+*item.Name, "azurerm_route")
 			if err := iterator.NextWithContext(ctx); err != nil {
 				log.Println(err)
 				return err
@@ -157,11 +162,13 @@ func (az *RouteTableGenerator) InitResources() error {
 		az.appendResource(&resource)
 		resourceGroupID, err := ParseAzureResourceID(*resource.ID)
 		if err != nil {
-			return err
+			// return err
+			log.Default().Println("Route table err", err)
 		}
 		err = az.appendRoutes(&resource, resourceGroupID)
 		if err != nil {
-			return err
+			// return err
+			log.Default().Println("Route table routes err", err)
 		}
 	}
 
