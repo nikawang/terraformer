@@ -30,6 +30,8 @@ func OutputHclFiles(resources []terraformutils.Resource, provider terraformutils
 		return err
 	}
 
+	// log.Println("Output data  issort : \n", sort)
+
 	providerConfig := map[string]interface{}{
 		"version": providerwrapper.GetProviderVersion(provider.GetName()),
 	}

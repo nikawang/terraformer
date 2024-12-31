@@ -128,6 +128,7 @@ func (r *Resource) Refresh(provider *providerwrapper.ProviderWrapper) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	r.InstanceState, err = provider.Refresh(r.InstanceInfo, r.InstanceState)
+	// log.Println("Refreshing state details...", r.InstanceState)
 	if err != nil {
 		log.Println(err)
 	}

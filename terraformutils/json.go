@@ -13,6 +13,7 @@ var ClosingBracketRegexp = regexp.MustCompile(`.?\\>`)
 
 func jsonPrint(data interface{}) ([]byte, error) {
 	dataJSONBytes, err := json.MarshalIndent(data, "", "  ")
+	// log.Println("before jsonalize for hcl: " + string(dataJSONBytes))
 	if err != nil {
 		log.Println(string(dataJSONBytes))
 		return []byte{}, fmt.Errorf("error marshalling terraform data to json: %v", err)

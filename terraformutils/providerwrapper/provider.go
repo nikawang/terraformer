@@ -180,6 +180,7 @@ func (p *ProviderWrapper) Refresh(info *terraform.InstanceInfo, state *terraform
 			continue
 		} else {
 			successReadResource = true
+			// log.Println("INFO: Successfully read resource from provider: ", resp)
 			break
 		}
 	}

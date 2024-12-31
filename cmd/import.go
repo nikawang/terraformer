@@ -253,6 +253,7 @@ func printService(provider terraformutils.ProviderGenerator, serviceName string,
 	log.Println(provider.GetName() + " save " + serviceName)
 	// Print HCL files for Resources
 	path := Path(options.PathPattern, provider.GetName(), serviceName, options.PathOutput)
+	log.Println(provider.GetName() + " save " + serviceName + " to " + path)
 	err := terraformoutput.OutputHclFiles(resources, provider, path, serviceName, options.Compact, options.Output, !options.NoSort)
 	if err != nil {
 		return err

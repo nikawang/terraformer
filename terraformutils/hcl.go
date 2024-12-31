@@ -37,6 +37,7 @@ var unsafeChars = regexp.MustCompile(`[^0-9A-Za-z_\-]`)
 
 // make HCL output reproducible by sorting the AST nodes
 func sortHclTree(tree interface{}) {
+
 	switch t := tree.(type) {
 	case []*ast.ObjectItem:
 		sort.Slice(t, func(i, j int) bool {
@@ -61,6 +62,7 @@ type astSanitizer struct {
 
 // output prints creates b printable HCL output and returns it.
 func (v *astSanitizer) visit(n interface{}) {
+	// log.Default().Println("visit: type: ", fmt.Sprintf("%T", n))
 	switch t := n.(type) {
 	case *ast.File:
 		v.visit(t.Node)
@@ -81,6 +83,12 @@ func (v *astSanitizer) visit(n interface{}) {
 		v.visitObjectItem(t)
 	case *ast.LiteralType:
 	case *ast.ListType:
+		// log.Println("ListType, sort: \n", v.sort)
+		// //  print the list
+		// for _, item := range t.List {
+		// 	log.Println("ListType, item: \n", string(item.(*ast.LiteralType).Token.Text))
+		// }
+		// sortHclTree(t.List)
 		if v.sort {
 			sortHclTree(t.List)
 		}
@@ -150,7 +158,10 @@ func (v *astSanitizer) visitObjectItem(o *ast.ObjectItem) {
 			}
 		}
 	case *ast.ListType:
-		sortHclTree(t.List)
+		if v.sort {
+			sortHclTree(t.List)
+		}
+		// log.Println("ListType, fake sortHCLTree")
 	default:
 	}
 
@@ -172,11 +183,13 @@ func Print(data interface{}, mapsObjects map[string]struct{}, format string, sor
 
 func hclPrint(data interface{}, mapsObjects map[string]struct{}, sort bool) ([]byte, error) {
 	dataBytesJSON, err := jsonPrint(data)
+	// log.Println("hclPrint: \t", string(dataBytesJSON))
 	if err != nil {
 		return dataBytesJSON, err
 	}
 	dataJSON := string(dataBytesJSON)
 	nodes, err := hclParser.Parse([]byte(dataJSON))
+	// log.Print("HCL raw1: \t", nodes)
 	if err != nil {
 		log.Println(dataJSON)
 		return []byte{}, fmt.Errorf("error parsing terraform json: %v", err)
@@ -187,26 +200,30 @@ func hclPrint(data interface{}, mapsObjects map[string]struct{}, sort bool) ([]b
 
 	var b bytes.Buffer
 	err = hclPrinter.Fprint(&b, nodes)
+	// log.Print("HCL raw2: \t", b.String())
 	if err != nil {
 		return nil, fmt.Errorf("error writing HCL: %v", err)
 	}
 	s := b.String()
-
+	// log.Print("HCL raw3: \t", string(s))
 	// Remove extra whitespace...
 	s = strings.ReplaceAll(s, "\n\n", "\n")
 
 	// ...but leave whitespace between resources
 	s = strings.ReplaceAll(s, "}\nresource", "}\n\nresource")
-
+	// log.Print("HCL raw4: \t", string(s))
 	// Apply Terraform style (alignment etc.)
 	formatted, err := hclPrinter.Format([]byte(s))
+	// log.Print("HCL first: \t", string(formatted))
 	if err != nil {
 		return nil, err
 	}
 	// hack for support terraform 0.12
 	formatted = terraform12Adjustments(formatted, mapsObjects)
+	// log.Print("HCL second: \t", string(formatted))
 	// hack for support terraform 0.13
 	formatted = terraform13Adjustments(formatted)
+	// log.Print("HCL third: \t", string(formatted))
 	if err != nil {
 		log.Println("Invalid HCL follows:")
 		for i, line := range strings.Split(s, "\n") {
@@ -214,7 +231,7 @@ func hclPrint(data interface{}, mapsObjects map[string]struct{}, sort bool) ([]b
 		}
 		return nil, fmt.Errorf("error formatting HCL: %v", err)
 	}
-
+	// log.Print("HCL final: \t", string(formatted))
 	return formatted, nil
 }
 
@@ -278,7 +295,7 @@ func escapeRune(s string) string {
 func TfSanitize(name string) string {
 	name = unsafeChars.ReplaceAllStringFunc(name, escapeRune)
 	// name = "tfer--" + name
-	
+
 	return name
 }
 
